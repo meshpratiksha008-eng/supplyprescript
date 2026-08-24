@@ -1,0 +1,3 @@
+from api.db import Base, engine
+Base.metadata.create_all(engine)
+print("Tables created.")
