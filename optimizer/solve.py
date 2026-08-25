@@ -13,9 +13,9 @@ def prescribe(delay_days: float, budget_cap: float = 20000):
     order_value = 150_000  # example
     options = []
 
-    air_cost = min(1000 * delay_days, budget_cap)
+    air_cost = 1000 * delay_days
     options.append({"option": "A", "label": "Pay for Air Freight",
-                     "cost": air_cost, "time_saved_days": delay_days})
+                 "cost": air_cost, "time_saved_days": delay_days})
 
     supplier_cost = order_value * 0.10
     options.append({"option": "B", "label": "Buy from secondary supplier",

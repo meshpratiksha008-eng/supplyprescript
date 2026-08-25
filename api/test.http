@@ -1,0 +1,9 @@
+   GET http://localhost:8000/health
+
+   ###
+
+   GET http://localhost:8000/prescribe/1?delay_days=14
+
+   ###
+
+   GET http://localhost:8000/prescribe/2?delay_days=25&budget_cap=15000
