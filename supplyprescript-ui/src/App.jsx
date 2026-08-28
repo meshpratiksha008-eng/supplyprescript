@@ -1,18 +1,30 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
 import PrescriptionCard from "./components/PrescriptionCard";
 
 function App() {
-  const fakeOptions = [
-    { option: "A", label: "Pay for Air Freight", cost: 5000, time_saved_days: 5, cost_per_day_saved: 1000, is_best: true },
-    { option: "B", label: "Supplier Premium", cost: 3000, time_saved_days: 2, cost_per_day_saved: 1500 },
-    { option: "C", label: "Do Nothing", cost: 0, time_saved_days: 0, cost_per_day_saved: 0 },
-  ];
+  const [options, setOptions] = useState([]);
+  const [bestOption, setBestOption] = useState(null);
+
+  useEffect(() => {
+    axios.get("http://localhost:8000/prescribe/1?delay_days=14")
+      .then(res => {
+        setOptions(res.data.options);
+        setBestOption(res.data.best_option);
+      })
+      .catch(err => console.error("Failed to fetch prescriptions:", err));
+  }, []);
 
   return (
     <div style={{ padding: "2rem" }}>
       <h1>SupplyPrescript</h1>
       <div style={{ display: "flex", gap: "1rem" }}>
-        {fakeOptions.map(o => (
-          <PrescriptionCard key={o.option} option={o} onExecute={(opt) => console.log("clicked", opt)} />
+        {options.map(o => (
+          <PrescriptionCard
+            key={o.option}
+            option={{ ...o, is_best: o.option === bestOption }}
+            onExecute={(opt) => console.log("clicked", opt)}
+          />
         ))}
       </div>
     </div>
