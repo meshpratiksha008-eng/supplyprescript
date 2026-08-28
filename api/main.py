@@ -1,7 +1,11 @@
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from api.db import Base, engine
 from optimizer.solve import prescribe
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("supplyprescript")
 
 app = FastAPI()
 
@@ -20,6 +24,7 @@ def health():
 
 @app.get("/prescribe/{shipment_id}")
 def get_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20000):
+    logger.info(f"Prescription requested: shipment_id={shipment_id}, delay_days={delay_days}, budget_cap={budget_cap}")
     if delay_days < 0:
         raise HTTPException(status_code=400, detail="delay_days cannot be negative")
     if budget_cap <= 0:
