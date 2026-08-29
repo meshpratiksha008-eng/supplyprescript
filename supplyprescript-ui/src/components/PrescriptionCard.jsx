@@ -11,9 +11,6 @@ export default function PrescriptionCard({ option, onExecute, isExecuting }) {
     Promise.resolve(onExecute(option));
   };
 
-  // Keyboard accessibility (Enhancement #10):
-  // pressing Enter or Space while the card is focused triggers execute,
-  // same as clicking the button.
   const handleKeyDown = (e) => {
     if ((e.key === "Enter" || e.key === " ") && !isExecuting) {
       e.preventDefault();

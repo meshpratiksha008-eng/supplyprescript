@@ -46,7 +46,6 @@ function Toast({ toast, onClose }) {
   );
 }
 
-// --- sessionStorage helpers (Enhancement #11) ---
 function getStoredNumber(key, fallback) {
   const raw = sessionStorage.getItem(key);
   const n = Number(raw);
@@ -58,8 +57,15 @@ function App() {
   const [bestOption, setBestOption] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [shipmentId, setShipmentId] = useState(() => getStoredNumber("shipmentId", 1));
-  const [delayDays, setDelayDays] = useState(() => getStoredNumber("delayDays", 14));
+
+  // Raw text the user is typing — never "corrected" mid-keystroke, so no flicker/lag
+  const [shipmentIdInput, setShipmentIdInput] = useState(() => String(getStoredNumber("shipmentId", 1)));
+  const [delayDaysInput, setDelayDaysInput] = useState(() => String(getStoredNumber("delayDays", 14)));
+
+  // Clean numeric values derived from the raw text — used for API calls, storage, etc.
+  const shipmentId = Number(shipmentIdInput) || 0;
+  const delayDays = Number(delayDaysInput) || 0;
+
   const [toast, setToast] = useState(null);
   const [recentDecisions, setRecentDecisions] = useState([]);
   const [executingOption, setExecutingOption] = useState(null);
@@ -69,7 +75,7 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Persist picker values across refresh (Enhancement #11)
+  // Persist picker values across refresh
   useEffect(() => {
     sessionStorage.setItem("shipmentId", String(shipmentId));
   }, [shipmentId]);
@@ -81,10 +87,11 @@ function App() {
   // Debounced fetch
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
 
     const timer = setTimeout(() => {
+      setLoading(true);
+      setError(null);
+
       fetchWithRetry(
         `${API_BASE_URL}/prescribe/${shipmentId}?delay_days=${delayDays}`,
         { timeout: 8000, signal: controller.signal }
@@ -107,7 +114,6 @@ function App() {
     };
   }, [shipmentId, delayDays]);
 
-  // Optimistic UI update (Enhancement #9)
   const handleExecute = (option) => {
     const confirmed = window.confirm(
       `Confirm decision: "${option.label}" — cost $${option.cost.toLocaleString()}, ` +
@@ -117,7 +123,6 @@ function App() {
 
     setExecutingOption(option.option);
 
-    // Optimistically add to the recent-decisions list right away, marked "pending"
     const optimisticEntry = {
       option: option.option,
       label: option.label,
@@ -138,23 +143,18 @@ function App() {
         },
       })
       .then(() => {
-        // Confirm the optimistic entry
         setRecentDecisions((prev) =>
-          prev.map((d) =>
-            d === optimisticEntry ? { ...d, status: "confirmed" } : d
-          )
+          prev.map((d) => (d === optimisticEntry ? { ...d, status: "confirmed" } : d))
         );
         showToast("success", `Decision recorded: option ${option.option}`);
       })
       .catch(() => {
-        // Roll back the optimistic entry on failure
         setRecentDecisions((prev) => prev.filter((d) => d !== optimisticEntry));
         showToast("error", "Failed to save decision — rolled back.");
       })
       .finally(() => setExecutingOption(null));
   };
 
-  // Chart data for Recharts comparison (Enhancement #12)
   const chartData = options.map((o) => ({
     name: o.label,
     costPerDaySaved: o.cost_per_day_saved,
@@ -172,9 +172,8 @@ function App() {
           <input
             type="number"
             min="1"
-            value={shipmentId}
-            disabled={loading}
-            onChange={(e) => setShipmentId(Number(e.target.value))}
+            value={shipmentIdInput}
+            onChange={(e) => setShipmentIdInput(e.target.value)}
           />
         </label>
         <label>
@@ -182,9 +181,8 @@ function App() {
           <input
             type="number"
             min="0"
-            value={delayDays}
-            disabled={loading}
-            onChange={(e) => setDelayDays(Number(e.target.value))}
+            value={delayDaysInput}
+            onChange={(e) => setDelayDaysInput(e.target.value)}
           />
         </label>
         {recentDecisions.length > 0 && (
@@ -194,7 +192,6 @@ function App() {
         )}
       </div>
 
-      {/* Cards — keyboard accessible (Enhancement #10) */}
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }} role="list">
         {loading && (
           <>
@@ -207,7 +204,7 @@ function App() {
         {!loading && error && (
           <div>
             <p style={{ color: "red" }}>{error}</p>
-            <button onClick={() => setDelayDays((d) => d)}>Retry</button>
+            <button onClick={() => setDelayDaysInput((d) => d)}>Retry</button>
           </div>
         )}
 
@@ -227,7 +224,6 @@ function App() {
           ))}
       </div>
 
-      {/* Recharts comparison bar (Enhancement #12) */}
       {!loading && !error && chartData.length > 0 && (
         <div style={{ marginTop: "2rem", maxWidth: "600px" }}>
           <h3>Cost per day saved — comparison</h3>
@@ -235,7 +231,7 @@ function App() {
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 40 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" angle={-15} textAnchor="end" interval={0} height={60} fontSize={12} />
-              <YAxis />
+              <YAxis scale="log" domain={["auto", "auto"]} allowDataOverflow />
               <Tooltip formatter={(value) => [`$${value}`, "Cost/day saved"]} />
               <Bar dataKey="costPerDaySaved" fill="#2e7d32" />
             </BarChart>
