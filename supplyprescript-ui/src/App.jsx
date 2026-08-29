@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import PrescriptionCard from "./components/PrescriptionCard";
 import "./App.css";
 
@@ -18,13 +19,7 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
 function SkeletonCard() {
   return (
     <div
-      style={{
-        border: "1px solid #ccc",
-        borderRadius: "8px",
-        padding: "1rem",
-        width: "200px",
-        height: "120px",
-      }}
+      style={{ border: "1px solid #ccc", borderRadius: "8px", padding: "1rem", width: "200px", height: "120px" }}
       className="animate-pulse"
     >
       <div style={{ background: "#e0e0e0", height: "1rem", marginBottom: "0.5rem" }} />
@@ -38,17 +33,11 @@ function Toast({ toast, onClose }) {
   const bg = toast.type === "error" ? "#c62828" : "#2e7d32";
   return (
     <div
+      role="status"
       style={{
-        position: "fixed",
-        top: "1rem",
-        right: "1rem",
-        background: bg,
-        color: "white",
-        padding: "0.75rem 1.25rem",
-        borderRadius: "8px",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-        cursor: "pointer",
-        zIndex: 1000,
+        position: "fixed", top: "1rem", right: "1rem", background: bg, color: "white",
+        padding: "0.75rem 1.25rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+        cursor: "pointer", zIndex: 1000,
       }}
       onClick={onClose}
     >
@@ -57,13 +46,20 @@ function Toast({ toast, onClose }) {
   );
 }
 
+// --- sessionStorage helpers (Enhancement #11) ---
+function getStoredNumber(key, fallback) {
+  const raw = sessionStorage.getItem(key);
+  const n = Number(raw);
+  return raw !== null && !Number.isNaN(n) ? n : fallback;
+}
+
 function App() {
   const [options, setOptions] = useState([]);
   const [bestOption, setBestOption] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [shipmentId, setShipmentId] = useState(1);
-  const [delayDays, setDelayDays] = useState(14);
+  const [shipmentId, setShipmentId] = useState(() => getStoredNumber("shipmentId", 1));
+  const [delayDays, setDelayDays] = useState(() => getStoredNumber("delayDays", 14));
   const [toast, setToast] = useState(null);
   const [recentDecisions, setRecentDecisions] = useState([]);
   const [executingOption, setExecutingOption] = useState(null);
@@ -73,7 +69,16 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Debounced fetch — waits 400ms after the user stops changing inputs
+  // Persist picker values across refresh (Enhancement #11)
+  useEffect(() => {
+    sessionStorage.setItem("shipmentId", String(shipmentId));
+  }, [shipmentId]);
+
+  useEffect(() => {
+    sessionStorage.setItem("delayDays", String(delayDays));
+  }, [delayDays]);
+
+  // Debounced fetch
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -102,6 +107,7 @@ function App() {
     };
   }, [shipmentId, delayDays]);
 
+  // Optimistic UI update (Enhancement #9)
   const handleExecute = (option) => {
     const confirmed = window.confirm(
       `Confirm decision: "${option.label}" — cost $${option.cost.toLocaleString()}, ` +
@@ -110,6 +116,17 @@ function App() {
     if (!confirmed) return Promise.resolve();
 
     setExecutingOption(option.option);
+
+    // Optimistically add to the recent-decisions list right away, marked "pending"
+    const optimisticEntry = {
+      option: option.option,
+      label: option.label,
+      cost: option.cost,
+      time: new Date().toLocaleTimeString(),
+      status: "pending",
+    };
+    setRecentDecisions((prev) => [optimisticEntry, ...prev].slice(0, 5));
+    showToast("success", `Recording decision: option ${option.option}...`);
 
     return axios
       .post(`${API_BASE_URL}/execute-decision`, null, {
@@ -121,24 +138,27 @@ function App() {
         },
       })
       .then(() => {
-        showToast("success", `Decision recorded: option ${option.option}`);
+        // Confirm the optimistic entry
         setRecentDecisions((prev) =>
-          [
-            {
-              option: option.option,
-              label: option.label,
-              cost: option.cost,
-              time: new Date().toLocaleTimeString(),
-            },
-            ...prev,
-          ].slice(0, 5)
+          prev.map((d) =>
+            d === optimisticEntry ? { ...d, status: "confirmed" } : d
+          )
         );
+        showToast("success", `Decision recorded: option ${option.option}`);
       })
       .catch(() => {
-        showToast("error", "Failed to save decision — check the server.");
+        // Roll back the optimistic entry on failure
+        setRecentDecisions((prev) => prev.filter((d) => d !== optimisticEntry));
+        showToast("error", "Failed to save decision — rolled back.");
       })
       .finally(() => setExecutingOption(null));
   };
+
+  // Chart data for Recharts comparison (Enhancement #12)
+  const chartData = options.map((o) => ({
+    name: o.label,
+    costPerDaySaved: o.cost_per_day_saved,
+  }));
 
   return (
     <div style={{ padding: "1.5rem" }}>
@@ -174,7 +194,8 @@ function App() {
         )}
       </div>
 
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+      {/* Cards — keyboard accessible (Enhancement #10) */}
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }} role="list">
         {loading && (
           <>
             <SkeletonCard />
@@ -206,6 +227,22 @@ function App() {
           ))}
       </div>
 
+      {/* Recharts comparison bar (Enhancement #12) */}
+      {!loading && !error && chartData.length > 0 && (
+        <div style={{ marginTop: "2rem", maxWidth: "600px" }}>
+          <h3>Cost per day saved — comparison</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" angle={-15} textAnchor="end" interval={0} height={60} fontSize={12} />
+              <YAxis />
+              <Tooltip formatter={(value) => [`$${value}`, "Cost/day saved"]} />
+              <Bar dataKey="costPerDaySaved" fill="#2e7d32" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {recentDecisions.length > 0 && (
         <div style={{ marginTop: "2rem" }}>
           <h3>Recently executed</h3>
@@ -213,14 +250,13 @@ function App() {
             {recentDecisions.map((d, idx) => (
               <li
                 key={idx}
-                style={{
-                  padding: "0.5rem 0",
-                  borderBottom: "1px solid #eee",
-                  fontSize: "0.9rem",
-                }}
+                style={{ padding: "0.5rem 0", borderBottom: "1px solid #eee", fontSize: "0.9rem" }}
               >
                 <strong>{d.time}</strong> — Option {d.option} ({d.label}), $
                 {d.cost.toLocaleString()}
+                {d.status === "pending" && (
+                  <span style={{ color: "#f57c00", marginLeft: "0.5rem" }}>(saving...)</span>
+                )}
               </li>
             ))}
           </ul>

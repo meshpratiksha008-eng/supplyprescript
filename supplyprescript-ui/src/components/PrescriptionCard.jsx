@@ -11,12 +11,28 @@ export default function PrescriptionCard({ option, onExecute, isExecuting }) {
     Promise.resolve(onExecute(option));
   };
 
+  // Keyboard accessibility (Enhancement #10):
+  // pressing Enter or Space while the card is focused triggers execute,
+  // same as clicking the button.
+  const handleKeyDown = (e) => {
+    if ((e.key === "Enter" || e.key === " ") && !isExecuting) {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
     <div
       className={`border rounded-xl p-4 shadow-sm ${
         option.is_best ? "border-2 border-green-600" : ""
       }`}
-      style={{ width: "220px", position: "relative" }}
+      style={{ width: "220px", position: "relative", outline: "none" }}
+      role="listitem"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      aria-label={`${option.label}, cost $${cost.toLocaleString()}, saves ${days.toFixed(1)} days${
+        option.is_best ? ", recommended option" : ""
+      }`}
     >
       {option.is_best && (
         <span className="text-xs font-semibold bg-green-600 text-white px-2 py-0.5 rounded-full">
