@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from api.db import Base, engine
+from api.db import Base, engine, SessionLocal, Decision
 from optimizer.solve import prescribe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -64,6 +64,14 @@ def explain_prescription(shipment_id: int, delay_days: float, budget_cap: float 
     return {
         "shipment_id": shipment_id,
         "recommended": top["label"],
-        "reason": f"Lowest cost per day saved (${top['cost_per_day_saved']:.2f}/day) among {len(options)} feasible option(s)."
+        "reason": f"Lowest cost per day saved (${top['cost_per_day_saved']:.2f}/day) among {len(options)} options"
     }
-    
+
+@app.post("/execute-decision")
+def execute_decision(shipment_id: int, chosen_option: str, predicted_cost: float, predicted_delay_days: float):
+    db = SessionLocal()
+    d = Decision(shipment_id=shipment_id, chosen_option=chosen_option,
+                 predicted_cost=predicted_cost, predicted_delay_days=predicted_delay_days)
+    db.add(d); db.commit(); db.refresh(d)
+    db.close()
+    return {"status": "written", "decision_id": d.id}

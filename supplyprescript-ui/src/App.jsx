@@ -1,20 +1,9 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import PrescriptionCard from "./components/PrescriptionCard";
+import "./App.css";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
-
-function SkeletonCard() {
-  return (
-    <div className="border rounded-xl p-4 shadow-sm animate-pulse">
-      <div className="h-4 bg-gray-200 rounded w-3/4 mb-3"></div>
-      <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
-      <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
-      <div className="h-3 bg-gray-200 rounded w-1/2 mb-3"></div>
-      <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-    </div>
-  );
-}
 
 async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
   try {
@@ -26,17 +15,36 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
   }
 }
 
+function SkeletonCard() {
+  return (
+    <div
+      style={{
+        border: "1px solid #ccc",
+        borderRadius: "8px",
+        padding: "1rem",
+        width: "200px",
+        height: "120px",
+      }}
+      className="animate-pulse"
+    >
+      <div style={{ background: "#e0e0e0", height: "1rem", marginBottom: "0.5rem" }} />
+      <div style={{ background: "#e0e0e0", height: "1rem", width: "60%" }} />
+    </div>
+  );
+}
+
 function App() {
   const [options, setOptions] = useState([]);
   const [bestOption, setBestOption] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const shipmentId = 1;
-  const delayDays = 14;
+  const [shipmentId, setShipmentId] = useState(1);
+  const [delayDays, setDelayDays] = useState(14);
 
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true);
+    setError(null);
 
     fetchWithRetry(
       `${API_BASE_URL}/prescribe/${shipmentId}?delay_days=${delayDays}`,
@@ -56,42 +64,71 @@ function App() {
     return () => controller.abort();
   }, [shipmentId, delayDays]);
 
-  if (loading) {
-    return (
-      <div style={{ padding: "2rem" }}>
-        <h1>SupplyPrescript</h1>
-        <div style={{ display: "flex", gap: "1rem" }}>
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return <div style={{ padding: "2rem", color: "red" }}>{error}</div>;
-  }
-
-  if (options.length === 0) {
-    return (
-      <div style={{ padding: "2rem" }}>
-        No feasible prescription options found for this shipment.
-      </div>
-    );
-  }
+  const handleExecute = (option) => {
+    axios
+      .post(`${API_BASE_URL}/execute-decision`, null, {
+        params: {
+          shipment_id: shipmentId,
+          chosen_option: option.option,
+          predicted_cost: option.cost,
+          predicted_delay_days: delayDays,
+        },
+      })
+      .then(() => alert(`Decision recorded: option ${option.option}`))
+      .catch(() => alert("Failed to save decision — check the server."));
+  };
 
   return (
-    <div style={{ padding: "2rem" }}>
+    <div style={{ padding: "1.5rem" }}>
       <h1>SupplyPrescript</h1>
-      <div style={{ display: "flex", gap: "1rem" }}>
-        {options.map((o) => (
-          <PrescriptionCard
-            key={o.option}
-            option={{ ...o, is_best: o.option === bestOption }}
-            onExecute={(opt) => console.log("clicked", opt)}
+
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
+        <label>
+          Shipment ID:{" "}
+          <input
+            type="number"
+            min="1"
+            value={shipmentId}
+            disabled={loading}
+            onChange={(e) => setShipmentId(Number(e.target.value))}
           />
-        ))}
+        </label>
+        <label>
+          Delay (days):{" "}
+          <input
+            type="number"
+            min="0"
+            value={delayDays}
+            disabled={loading}
+            onChange={(e) => setDelayDays(Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        {loading && (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        )}
+
+        {!loading && error && <p style={{ color: "red" }}>{error}</p>}
+
+        {!loading && !error && options.length === 0 && (
+          <p>No feasible options for this delay/budget combination.</p>
+        )}
+
+        {!loading &&
+          !error &&
+          options.map((o, i) => (
+            <PrescriptionCard
+              key={o.option}
+              option={{ ...o, is_best: i === 0 }}
+              onExecute={handleExecute}
+            />
+          ))}
       </div>
     </div>
   );
