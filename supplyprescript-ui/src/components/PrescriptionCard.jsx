@@ -1,8 +1,6 @@
 import { useState } from "react";
 
-export default function PrescriptionCard({ option, onExecute }) {
-  const [executing, setExecuting] = useState(false);
-
+export default function PrescriptionCard({ option, onExecute, isExecuting }) {
   if (!option) return null;
 
   const cost = option.cost ?? 0;
@@ -10,12 +8,16 @@ export default function PrescriptionCard({ option, onExecute }) {
   const perDay = option.cost_per_day_saved ?? 0;
 
   const handleClick = () => {
-    setExecuting(true);
-    onExecute(option);
+    Promise.resolve(onExecute(option));
   };
 
   return (
-    <div className={`border rounded-xl p-4 shadow-sm ${option.is_best ? "border-2 border-green-600" : ""}`}>
+    <div
+      className={`border rounded-xl p-4 shadow-sm ${
+        option.is_best ? "border-2 border-green-600" : ""
+      }`}
+      style={{ width: "220px", position: "relative" }}
+    >
       {option.is_best && (
         <span className="text-xs font-semibold bg-green-600 text-white px-2 py-0.5 rounded-full">
           RECOMMENDED
@@ -27,11 +29,11 @@ export default function PrescriptionCard({ option, onExecute }) {
       <p>Cost / day saved: ${perDay.toFixed(0)}</p>
       <button
         aria-label={`Execute decision: ${option.label}`}
-        disabled={executing}
+        disabled={isExecuting}
         onClick={handleClick}
         className="mt-2 px-3 py-1 bg-black text-white rounded disabled:opacity-50"
       >
-        {executing ? "Executing..." : "Execute Decision"}
+        {isExecuting ? "Executing..." : "Execute Decision"}
       </button>
     </div>
   );
