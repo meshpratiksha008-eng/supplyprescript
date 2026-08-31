@@ -1,8 +1,11 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from api.db import Base, engine, SessionLocal, Decision
 from optimizer.solve import prescribe
+from fastapi.security import OAuth2PasswordRequestForm
+from api.auth import verify_password, create_token, get_current_user, User
+from api.db import SessionLocal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("supplyprescript")
@@ -47,6 +50,18 @@ def get_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20
         "options": rounded_options,
         "best_option": options[0]["option"]
     }
+@app.post("/login")
+def login(form: OAuth2PasswordRequestForm = Depends()):
+    db = SessionLocal()
+    user = db.query(User).filter(User.username == form.username).first()
+    db.close()
+    if not user or not verify_password(form.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    return {"access_token": create_token(user.username), "token_type": "bearer"}
+
+@app.get("/me")
+def me(current_user: str = Depends(get_current_user)):
+    return {"username": current_user}
 
 @app.get("/prescribe/{shipment_id}/explain")
 def explain_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20000):
