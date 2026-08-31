@@ -1,3 +1,4 @@
+from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -18,7 +19,26 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True)
     hashed_password = Column(String)
+    failed_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login = Column(DateTime, nullable=True)
 
+    
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True)
+    hashed_password = Column(String)
+    failed_attempts = Column(Integer, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login = Column(DateTime, nullable=True)
+
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    id = Column(Integer, primary_key=True)
+    username = Column(String)
+    success = Column(Integer)  # 1 or 0 (SQLite has no native bool)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 Base.metadata.create_all(engine)
 
 def verify_password(plain, hashed):

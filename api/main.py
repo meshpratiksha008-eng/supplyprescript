@@ -6,6 +6,8 @@ from optimizer.solve import prescribe
 from fastapi.security import OAuth2PasswordRequestForm
 from api.auth import verify_password, create_token, get_current_user, User
 from api.db import SessionLocal
+from datetime import datetime, timedelta
+from api.auth import LoginAttempt
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("supplyprescript")
@@ -50,14 +52,47 @@ def get_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20
         "options": rounded_options,
         "best_option": options[0]["option"]
     }
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES = 10
+
 @app.post("/login")
 def login(form: OAuth2PasswordRequestForm = Depends()):
     db = SessionLocal()
     user = db.query(User).filter(User.username == form.username).first()
-    db.close()
-    if not user or not verify_password(form.password, user.hashed_password):
+
+    if user and user.locked_until and user.locked_until > datetime.utcnow():
+        remaining = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+        db.close()
+        raise HTTPException(status_code=429, detail=f"Account locked. Try again in {remaining} minute(s).")
+
+    valid = user and verify_password(form.password, user.hashed_password)
+
+    db.add(LoginAttempt(username=form.username, success=1 if valid else 0))
+
+    if not valid:
+        if user:
+            user.failed_attempts = (user.failed_attempts or 0) + 1
+            if user.failed_attempts >= MAX_FAILED_ATTEMPTS:
+                user.locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+                user.failed_attempts = 0
+        db.commit()
+        db.close()
         raise HTTPException(status_code=401, detail="Incorrect username or password")
-    return {"access_token": create_token(user.username), "token_type": "bearer"}
+
+        user.failed_attempts = 0
+    user.locked_until = None
+    prior_login = user.last_login
+    user.last_login = datetime.utcnow()
+    db.commit()
+    username = user.username  # capture before closing the session
+    db.close()
+
+    return {
+        "access_token": create_token(username),
+        "token_type": "bearer",
+        "last_login": prior_login.isoformat() if prior_login else None,
+    }
+    
 
 @app.get("/me")
 def me(current_user: str = Depends(get_current_user)):

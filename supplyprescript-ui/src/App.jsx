@@ -54,7 +54,7 @@ function getStoredNumber(key, fallback) {
 }
 
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem("token"));
+  const [token, setToken] = useState(() => localStorage.getItem("token") || sessionStorage.getItem("token"));
 
   const [options, setOptions] = useState([]);
   const [bestOption, setBestOption] = useState(null);
@@ -78,13 +78,20 @@ function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleLogin = (newToken) => {
-    localStorage.setItem("token", newToken);
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem("darkMode") === "true");
+
+  const handleLogin = (newToken, rememberMe, lastLogin) => {
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem("token", newToken);
     setToken(newToken);
+    if (lastLogin) {
+      showToast("success", `Welcome back — last login ${new Date(lastLogin).toLocaleString()}`);
+    }
   };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
+    sessionStorage.removeItem("token");
     setToken(null);
   };
 
@@ -96,6 +103,30 @@ function App() {
   useEffect(() => {
     sessionStorage.setItem("delayDays", String(delayDays));
   }, [delayDays]);
+
+  // Apply dark mode
+  useEffect(() => {
+    localStorage.setItem("darkMode", darkMode);
+    document.body.style.background = darkMode ? "#121212" : "#fff";
+    document.body.style.color = darkMode ? "#eee" : "#111";
+  }, [darkMode]);
+
+  // Warn before session expiry
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      const msUntilExpiry = payload.exp * 1000 - Date.now();
+      const warnAt = msUntilExpiry - 60000; // warn 1 minute before
+      if (warnAt <= 0) return;
+      const timer = setTimeout(() => {
+        showToast("error", "Your session expires in 1 minute.");
+      }, warnAt);
+      return () => clearTimeout(timer);
+    } catch {
+      // malformed token, ignore
+    }
+  }, [token]);
 
   // Debounced fetch
   useEffect(() => {
@@ -197,9 +228,14 @@ function App() {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1>SupplyPrescript</h1>
-        <button onClick={handleLogout} style={{ padding: "0.4rem 0.8rem", height: "fit-content" }}>
-          Log out
-        </button>
+        <div>
+          <button onClick={() => setDarkMode((d) => !d)} style={{ marginRight: "0.5rem", padding: "0.4rem 0.8rem" }}>
+            {darkMode ? "☀️ Light" : "🌙 Dark"}
+          </button>
+          <button onClick={handleLogout} style={{ padding: "0.4rem 0.8rem" }}>
+            Log out
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>

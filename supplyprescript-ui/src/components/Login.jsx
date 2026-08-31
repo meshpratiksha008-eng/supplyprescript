@@ -10,32 +10,34 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const usernameRef = useRef(null);
+  const [rememberMe, setRememberMe] = useState(true);
 
   useEffect(() => {
     usernameRef.current?.focus();
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const form = new URLSearchParams();
-      form.append("username", username);
-      form.append("password", password);
-      const res = await axios.post(`${API_BASE_URL}/login`, form);
-      onLogin(res.data.access_token);
-    } catch (err) {
-      if (err.response?.status === 401) {
-        setError("Incorrect username or password.");
-      } else {
-        setError("Couldn't reach the server. Please try again.");
-      }
-    } finally {
-      setLoading(false);
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError("");
+  setLoading(true);
+  try {
+    const form = new URLSearchParams();
+    form.append("username", username);
+    form.append("password", password);
+    const res = await axios.post(`${API_BASE_URL}/login`, form);
+    onLogin(res.data.access_token, rememberMe, res.data.last_login);
+  } catch (err) {
+    if (err.response?.status === 429) {
+      setError(err.response.data.detail);
+    } else if (err.response?.status === 401) {
+      setError("Incorrect username or password.");
+    } else {
+      setError("Couldn't reach the server. Please try again.");
     }
-  };
-
+  } finally {
+    setLoading(false);
+  }
+};
   return (
     <div style={styles.page}>
       <div style={styles.card}>
@@ -79,6 +81,10 @@ export default function Login({ onLogin }) {
               {showPassword ? "Hide" : "Show"}
             </button>
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", color: "#555" }}>
+         <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+         Keep me signed in
+          </label> 
 
           {error && (
             <div style={styles.errorBox}>
