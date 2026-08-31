@@ -226,13 +226,47 @@ function App() {
     <div style={{ padding: "1.5rem" }}>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>SupplyPrescript</h1>
+            <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          background: darkMode ? "#1b1b1b" : "#2e7d32",
+          color: "#fff",
+          padding: "1rem 1.5rem",
+          borderRadius: "10px",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <div
+            style={{
+              width: "36px",
+              height: "36px",
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 700,
+              fontSize: "0.85rem",
+            }}
+          >
+            SP
+          </div>
+          <h1 style={{ margin: 0, fontSize: "1.3rem" }}>SupplyPrescript</h1>
+        </div>
         <div>
-          <button onClick={() => setDarkMode((d) => !d)} style={{ marginRight: "0.5rem", padding: "0.4rem 0.8rem" }}>
+          <button
+            onClick={() => setDarkMode((d) => !d)}
+            style={{ marginRight: "0.5rem", padding: "0.4rem 0.8rem", borderRadius: "6px", border: "none", cursor: "pointer" }}
+          >
             {darkMode ? "☀️ Light" : "🌙 Dark"}
           </button>
-          <button onClick={handleLogout} style={{ padding: "0.4rem 0.8rem" }}>
+          <button
+            onClick={handleLogout}
+            style={{ padding: "0.4rem 0.8rem", borderRadius: "6px", border: "none", cursor: "pointer" }}
+          >
             Log out
           </button>
         </div>
