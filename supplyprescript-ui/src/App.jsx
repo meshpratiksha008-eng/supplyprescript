@@ -54,7 +54,7 @@ function getStoredNumber(key, fallback) {
 }
 
 function App() {
-  const [token, setToken] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem("token"));
 
   const [options, setOptions] = useState([]);
   const [bestOption, setBestOption] = useState(null);
@@ -76,6 +76,16 @@ function App() {
   const showToast = (type, text) => {
     setToast({ type, text });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleLogin = (newToken) => {
+    localStorage.setItem("token", newToken);
+    setToken(newToken);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    setToken(null);
   };
 
   // Persist picker values across refresh
@@ -116,6 +126,20 @@ function App() {
       controller.abort();
     };
   }, [shipmentId, delayDays]);
+
+  // Auto-logout if any request comes back unauthorized
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (res) => res,
+      (err) => {
+        if (err.response?.status === 401) {
+          handleLogout();
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, []);
 
   const handleExecute = (option) => {
     const confirmed = window.confirm(
@@ -164,14 +188,19 @@ function App() {
   }));
 
   if (!token) {
-    return <Login onLogin={setToken} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
     <div style={{ padding: "1.5rem" }}>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <h1>SupplyPrescript</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>SupplyPrescript</h1>
+        <button onClick={handleLogout} style={{ padding: "0.4rem 0.8rem", height: "fit-content" }}>
+          Log out
+        </button>
+      </div>
 
       <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
         <label>

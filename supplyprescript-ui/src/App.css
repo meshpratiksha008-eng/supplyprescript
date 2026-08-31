@@ -16,7 +16,9 @@
     outline-offset: 2px;
   }
 }
-
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 .hero {
   position: relative;
 
