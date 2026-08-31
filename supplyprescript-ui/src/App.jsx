@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Login from "./components/Login";
 import axios from "axios";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import PrescriptionCard from "./components/PrescriptionCard";
@@ -53,6 +54,8 @@ function getStoredNumber(key, fallback) {
 }
 
 function App() {
+  const [token, setToken] = useState(null);
+
   const [options, setOptions] = useState([]);
   const [bestOption, setBestOption] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -159,6 +162,10 @@ function App() {
     name: o.label,
     costPerDaySaved: o.cost_per_day_saved,
   }));
+
+  if (!token) {
+    return <Login onLogin={setToken} />;
+  }
 
   return (
     <div style={{ padding: "1.5rem" }}>
