@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";import { useEffect, useState } from "react";
 import Login from "./components/Login";
 import axios from "axios";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import PrescriptionCard from "./components/PrescriptionCard";
 import "./App.css";
 
@@ -213,9 +213,16 @@ function App() {
       .finally(() => setExecutingOption(null));
   };
 
+   const getTierColor = (perDay) => {
+    if (perDay <= 1200) return "#2e7d32";
+    if (perDay <= 4000) return "#f57c00";
+    return "#c62828";
+  };
+
   const chartData = options.map((o) => ({
     name: o.label,
     costPerDaySaved: o.cost_per_day_saved,
+    fill: getTierColor(o.cost_per_day_saved),
   }));
 
   if (!token) {
@@ -272,9 +279,9 @@ function App() {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
+           <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", alignItems: "center" }}>
         <label>
-          Shipment ID:{" "}
+          📦 Shipment ID:{" "}
           <input
             type="number"
             min="1"
@@ -283,7 +290,7 @@ function App() {
           />
         </label>
         <label>
-          Delay (days):{" "}
+          ⏱️ Delay (days):{" "}
           <input
             type="number"
             min="0"
@@ -306,18 +313,20 @@ function App() {
             <SkeletonCard />
           </>
         )}
+        {!loading && !error && options.length === 0 && (
+          <div style={{ textAlign: "center", padding: "2rem", opacity: 0.7 }}>
+            <div style={{ fontSize: "2rem" }}>📭</div>
+            <p>No feasible options for this delay/budget combination.</p>
+          </div>
+        )}
 
-        {!loading && error && (
-          <div>
+                {!loading && error && (
+          <div style={{ textAlign: "center", padding: "1rem" }}>
+            <div style={{ fontSize: "1.8rem" }}>🚫</div>
             <p style={{ color: "red" }}>{error}</p>
             <button onClick={() => setDelayDaysInput((d) => d)}>Retry</button>
           </div>
         )}
-
-        {!loading && !error && options.length === 0 && (
-          <p>No feasible options for this delay/budget combination.</p>
-        )}
-
         {!loading &&
           !error &&
           options.map((o, i) => (
@@ -339,7 +348,11 @@ function App() {
               <XAxis dataKey="name" angle={-15} textAnchor="end" interval={0} height={60} fontSize={12} />
               <YAxis scale="log" domain={["auto", "auto"]} allowDataOverflow />
               <Tooltip formatter={(value) => [`$${value}`, "Cost/day saved"]} />
-              <Bar dataKey="costPerDaySaved" fill="#2e7d32" />
+                            <Bar dataKey="costPerDaySaved">
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
