@@ -1,5 +1,6 @@
 from api.db import SessionLocal, Decision
 from datetime import datetime, timedelta
+from collections import defaultdict
 import random
 
 # Realistic variance per option: (min_multiplier, max_multiplier)
@@ -13,12 +14,15 @@ NOISE_BY_OPTION = {
 }
 DEFAULT_NOISE = (1.0, 1.3)
 
-# Don't evaluate a decision the same day it was executed —
-# real invoice/ERP data wouldn't be available yet.
-MIN_AGE = timedelta(seconds=0)
+# Decisions older than this get evaluated; simulates waiting
+# for real invoice/ERP data to arrive after execution.
+MIN_AGE = timedelta(days=1)
+
+# Flag decisions where actual cost is way off from predicted.
+OUTLIER_THRESHOLD = 0.5  # 50% overrun/underrun
 
 
-def evaluate_pending_decisions():
+def evaluate_pending_decisions(dry_run=False):
     db = SessionLocal()
     cutoff = datetime.utcnow() - MIN_AGE
 
@@ -34,17 +38,31 @@ def evaluate_pending_decisions():
         db.close()
         return
 
+    if dry_run:
+        print(f"[DRY RUN] Would evaluate {len(pending)} decisions. No changes made.")
+        db.close()
+        return
+
     evaluated = 0
     skipped = 0
-    overruns = []
+    outliers = 0
+    errors_by_option = defaultdict(list)
 
     for d in pending:
         try:
             lo, hi = NOISE_BY_OPTION.get(d.chosen_option, DEFAULT_NOISE)
-            # In production this pulls a real invoice/ERP record.
             d.actual_cost = d.predicted_cost * random.uniform(lo, hi)
             d.evaluated_at = datetime.utcnow()
-            overruns.append(d.actual_cost / d.predicted_cost - 1)
+
+            error_pct = (d.actual_cost - d.predicted_cost) / d.predicted_cost
+            d.prediction_error_pct = error_pct
+
+            is_outlier = abs(error_pct) > OUTLIER_THRESHOLD
+            d.flagged_outlier = is_outlier
+            if is_outlier:
+                outliers += 1
+
+            errors_by_option[d.chosen_option or "Unknown"].append(error_pct)
             evaluated += 1
         except Exception as e:
             print(f"Skipped decision id={getattr(d, 'id', '?')}: {e}")
@@ -54,10 +72,17 @@ def evaluate_pending_decisions():
     db.commit()
     db.close()
 
-    avg_overrun = sum(overruns) / len(overruns) if overruns else 0
-    print(f"Evaluated {evaluated} decisions, skipped {skipped}.")
-    print(f"Average predicted-vs-actual overrun: {avg_overrun:+.1%}")
+    all_errors = [e for errs in errors_by_option.values() for e in errs]
+    avg_overrun = sum(all_errors) / len(all_errors) if all_errors else 0
+
+    print(f"Evaluated {evaluated} decisions, skipped {skipped}, flagged {outliers} outliers.")
+    print(f"Overall average predicted-vs-actual overrun: {avg_overrun:+.1%}")
+    print("\nBreakdown by option:")
+    for option, errs in errors_by_option.items():
+        opt_avg = sum(errs) / len(errs)
+        print(f"  {option:<20} avg overrun {opt_avg:+.1%}  ({len(errs)} decisions)")
 
 
 if __name__ == "__main__":
-    evaluate_pending_decisions()
+    import sys
+    evaluate_pending_decisions(dry_run="--dry-run" in sys.argv)

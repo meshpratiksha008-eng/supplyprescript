@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker
 import datetime
 
@@ -13,8 +13,10 @@ class Decision(Base):
     id = Column(Integer, primary_key=True)
     shipment_id = Column(Integer)
     predicted_delay_days = Column(Float)
-    chosen_option = Column(String)          # e.g. "A", "B", "C"
+    chosen_option = Column(String)
     predicted_cost = Column(Float)
     actual_cost = Column(Float, nullable=True)
     executed_at = Column(DateTime, default=datetime.datetime.utcnow)
     evaluated_at = Column(DateTime, nullable=True)
+    prediction_error_pct = Column(Float, nullable=True)   # NEW
+    flagged_outlier = Column(Boolean, nullable=True)       # NEW
