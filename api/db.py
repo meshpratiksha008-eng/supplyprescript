@@ -19,4 +19,6 @@ class Decision(Base):
     executed_at = Column(DateTime, default=datetime.datetime.utcnow)
     evaluated_at = Column(DateTime, nullable=True)
     prediction_error_pct = Column(Float, nullable=True)   # NEW
+    dollar_error = Column(Float, nullable=True)   # NEW
+    flagged_outlier = Column(Boolean, nullable=True)
     flagged_outlier = Column(Boolean, nullable=True)       # NEW
