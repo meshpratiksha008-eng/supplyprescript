@@ -1,11 +1,17 @@
 @import "tailwindcss";
-* {
-  transition: background-color 0.25s ease, color 0.25s ease;
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.dark-mode-toggle {
-  transition: transform 0.3s ease;
+.route-line {
+  animation: dashMove 3s linear infinite;
 }
-.dark-mode-toggle:hover {
-  transform: rotate(15deg);
+.route-line-slow {
+  animation-duration: 5s;
+}
+
+@keyframes dashMove {
+  to { stroke-dashoffset: -100; }
 }

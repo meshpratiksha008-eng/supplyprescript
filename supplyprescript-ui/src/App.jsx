@@ -4,6 +4,7 @@ import Login from "./components/Login";
 import axios from "axios";
 import PrescriptionCard from "./components/PrescriptionCard";
 import "./App.css";
+import AnimatedBackground from "./components/AnimatedBackground";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -226,11 +227,18 @@ function App() {
   }));
 
   if (!token) {
-    return <Login onLogin={handleLogin} />;
-  }
+    return (
+      <>
+        <AnimatedBackground darkMode={darkMode} />
+        <Login onLogin={handleLogin} />
+      </>
+    );
+}
 
-  return (
-    <div style={{ padding: "1.5rem" }}>
+    return (
+        <>
+      <AnimatedBackground darkMode={darkMode} />
+      <div style={{ padding: "1.5rem" }}>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
             <div
@@ -404,7 +412,8 @@ function App() {
           </ul>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
