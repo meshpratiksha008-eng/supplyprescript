@@ -1,1 +1,11 @@
 @import "tailwindcss";
+* {
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.dark-mode-toggle {
+  transition: transform 0.3s ease;
+}
+.dark-mode-toggle:hover {
+  transform: rotate(15deg);
+}

@@ -15,7 +15,6 @@ function getTier(perDay) {
   return { color: "#c62828", label: "Costly" };
 }
 
-
 export default function PrescriptionCard({ option, onExecute, isExecuting }) {
   if (!option) return null;
 
@@ -36,6 +35,16 @@ export default function PrescriptionCard({ option, onExecute, isExecuting }) {
     }
   };
 
+  // NEW — hover handlers for the card lift effect
+  const handleMouseEnter = (e) => {
+    e.currentTarget.style.transform = "scale(1.02)";
+    e.currentTarget.style.boxShadow = "0 8px 20px rgba(0,0,0,0.12)";
+  };
+  const handleMouseLeave = (e) => {
+    e.currentTarget.style.transform = "scale(1)";
+    e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.06)";
+  };
+
   return (
     <div
       className={`border rounded-xl p-4 shadow-sm ${
@@ -46,10 +55,14 @@ export default function PrescriptionCard({ option, onExecute, isExecuting }) {
         position: "relative",
         outline: "none",
         borderLeft: `5px solid ${tier.color}`,
+        transition: "transform 0.2s ease, box-shadow 0.2s ease", // NEW
+        cursor: "pointer", // NEW
       }}
       role="listitem"
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onMouseEnter={handleMouseEnter}   // NEW
+      onMouseLeave={handleMouseLeave}   // NEW
       aria-label={`${option.label}, cost $${cost.toLocaleString()}, saves ${days.toFixed(1)} days${
         option.is_best ? ", recommended option" : ""
       }`}
@@ -75,7 +88,7 @@ export default function PrescriptionCard({ option, onExecute, isExecuting }) {
         aria-label={`Execute decision: ${option.label}`}
         disabled={isExecuting}
         onClick={handleClick}
-        className="mt-2 px-3 py-1 bg-black text-white rounded disabled:opacity-50"
+        className="mt-2 px-3 py-1 bg-black text-white rounded disabled:opacity-50 execute-button" // NEW: added execute-button class
       >
         {isExecuting ? "Executing..." : "Execute Decision"}
       </button>

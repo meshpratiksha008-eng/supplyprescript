@@ -1,5 +1,5 @@
-
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";import { useEffect, useState } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
+import { useEffect, useState } from "react";
 import Login from "./components/Login";
 import axios from "axios";
 import PrescriptionCard from "./components/PrescriptionCard";
@@ -238,7 +238,9 @@ function App() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          background: darkMode ? "#1b1b1b" : "#2e7d32",
+          background: darkMode
+            ? "linear-gradient(135deg, #1f2937 0%, #374151 100%)"
+            : "linear-gradient(135deg, #0f5132 0%, #2e7d32 100%)",
           color: "#fff",
           padding: "1rem 1.5rem",
           borderRadius: "10px",
@@ -314,9 +316,21 @@ function App() {
           </>
         )}
         {!loading && !error && options.length === 0 && (
-          <div style={{ textAlign: "center", padding: "2rem", opacity: 0.7 }}>
-            <div style={{ fontSize: "2rem" }}>📭</div>
-            <p>No feasible options for this delay/budget combination.</p>
+          <div
+            style={{
+              textAlign: "center",
+              padding: "3rem 2rem",
+              opacity: 0.85,
+              width: "100%",
+            }}
+          >
+            <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>📭</div>
+            <p style={{ fontSize: "1rem", fontWeight: 500, margin: 0 }}>
+              No feasible options for this delay/budget combination.
+            </p>
+            <p style={{ fontSize: "0.85rem", opacity: 0.7, marginTop: "0.25rem" }}>
+              Try adjusting the shipment ID or delay days above.
+            </p>
           </div>
         )}
 
@@ -347,8 +361,21 @@ function App() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" angle={-15} textAnchor="end" interval={0} height={60} fontSize={12} />
               <YAxis scale="log" domain={["auto", "auto"]} allowDataOverflow />
-              <Tooltip formatter={(value) => [`$${value}`, "Cost/day saved"]} />
-                            <Bar dataKey="costPerDaySaved">
+              <Tooltip
+                formatter={(value) => [`$${value}`, "Cost/day saved"]}
+                contentStyle={{
+                  backgroundColor: "#1f2937",
+                  border: "none",
+                  borderRadius: "8px",
+                  color: "#fff",
+                }}
+                cursor={{ fill: "rgba(0,0,0,0.05)" }}
+              />
+              <Bar dataKey="costPerDaySaved"
+                isAnimationActive={true}
+                animationDuration={800}
+                animationEasing="ease-out"
+              >
                 {chartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
