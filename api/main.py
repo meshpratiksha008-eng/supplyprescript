@@ -127,9 +127,66 @@ def execute_decision(shipment_id: int, chosen_option: str, predicted_cost: float
     return {"status": "written", "decision_id": d.id}
 @app.get("/decision-roi")
 def decision_roi():
+    from collections import defaultdict
+
     db = SessionLocal()
     rows = db.query(Decision).filter(Decision.actual_cost.isnot(None)).all()
     total = len(rows)
     good = sum(1 for r in rows if r.actual_cost <= r.predicted_cost * 1.1)
-    return {"total_evaluated": total, "within_10pct_of_prediction": good,
-            "accuracy_rate": good / total if total else None}
+
+    by_option = defaultdict(lambda: {"total": 0, "good": 0})
+    for r in rows:
+        key = r.chosen_option or "Unknown"
+        by_option[key]["total"] += 1
+        if r.actual_cost <= r.predicted_cost * 1.1:
+            by_option[key]["good"] += 1
+
+    breakdown = {}
+    for opt, v in by_option.items():
+        rate = v["good"] / v["total"]
+        recommendation = (
+            "reliable" if rate >= 0.7
+            else "review_needed" if rate >= 0.4
+            else "unreliable"
+        )
+        breakdown[opt] = {
+            "total": v["total"],
+            "accuracy_rate": rate,
+            "recommendation": recommendation,
+        }
+
+    total_dollar_error = sum(r.dollar_error for r in rows if r.dollar_error is not None)
+    avg_dollar_error = total_dollar_error / total if total else None
+
+    outliers = sum(1 for r in rows if r.flagged_outlier)
+
+    # Cost-weighted accuracy: bigger decisions count more
+    weighted_total = sum(r.predicted_cost for r in rows)
+    weighted_good = sum(r.predicted_cost for r in rows if r.actual_cost <= r.predicted_cost * 1.1)
+    cost_weighted_accuracy = weighted_good / weighted_total if weighted_total else None
+
+    # Worst 5 decisions by absolute dollar error
+    worst = sorted(rows, key=lambda r: abs(r.dollar_error or 0), reverse=True)[:5]
+    worst_decisions = [
+        {
+            "id": r.id,
+            "shipment_id": r.shipment_id,
+            "chosen_option": r.chosen_option,
+            "predicted_cost": r.predicted_cost,
+            "actual_cost": r.actual_cost,
+            "dollar_error": r.dollar_error,
+        }
+        for r in worst
+    ]
+
+    return {
+        "total_evaluated": total,
+        "within_10pct_of_prediction": good,
+        "accuracy_rate": good / total if total else None,
+        "cost_weighted_accuracy": cost_weighted_accuracy,
+        "breakdown_by_option": breakdown,
+        "total_dollar_error": total_dollar_error,
+        "avg_dollar_error": avg_dollar_error,
+        "flagged_outliers": outliers,
+        "worst_decisions": worst_decisions,
+    }
