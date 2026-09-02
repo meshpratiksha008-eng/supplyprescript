@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AnimatedNumber from "./AnimatedNumber";
 
 function getIconForLabel(label = "") {
   const l = label.toLowerCase();
@@ -72,11 +73,12 @@ export default function PrescriptionCard({ option, onExecute, isExecuting }) {
           RECOMMENDED
         </span>
       )}
-      <h3 className="font-bold mt-1">
-        <span style={{ marginRight: "0.4rem" }}>{icon}</span>
-        {option.label}
-      </h3>
-      <p>Cost: ${cost.toLocaleString()}</p>
+
+     <h3 className="font-bold mt-1">
+  <span style={{ marginRight: "0.4rem" }}>{icon}</span>
+  {option.label}
+</h3>
+<p>Cost: <AnimatedNumber value={cost} prefix="$" decimals={0} /></p>
       <p>Time saved: {days.toFixed(1)} days</p>
       <p>
         Cost / day saved: ${perDay.toFixed(0)}{" "}

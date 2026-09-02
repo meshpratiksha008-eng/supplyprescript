@@ -5,6 +5,7 @@ import axios from "axios";
 import PrescriptionCard from "./components/PrescriptionCard";
 import "./App.css";
 import AnimatedBackground from "./components/AnimatedBackground";
+import AnimatedNumber from "./components/AnimatedNumber";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -47,6 +48,7 @@ function Toast({ toast, onClose }) {
     </div>
   );
 }
+
 
 function getStoredNumber(key, fallback) {
   const raw = sessionStorage.getItem(key);
@@ -350,15 +352,24 @@ function App() {
           </div>
         )}
         {!loading &&
-          !error &&
-          options.map((o, i) => (
-            <PrescriptionCard
-              key={o.option}
-              option={{ ...o, is_best: i === 0 }}
-              onExecute={handleExecute}
-              isExecuting={executingOption === o.option}
-            />
-          ))}
+  !error &&
+  options.map((o, i) => (
+    <div
+      key={o.option}
+      style={{
+        animation: "fadeSlideIn 0.4s ease forwards",
+        animationDelay: `${i * 0.08}s`,
+        opacity: 0,
+      }}
+    >
+      <PrescriptionCard
+        option={{ ...o, is_best: i === 0 }}
+        onExecute={handleExecute}
+        isExecuting={executingOption === o.option}
+      />
+    </div>
+  ))}
+ 
       </div>
 
       {!loading && !error && chartData.length > 0 && (
