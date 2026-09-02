@@ -125,3 +125,11 @@ def execute_decision(shipment_id: int, chosen_option: str, predicted_cost: float
     db.add(d); db.commit(); db.refresh(d)
     db.close()
     return {"status": "written", "decision_id": d.id}
+@app.get("/decision-roi")
+def decision_roi():
+    db = SessionLocal()
+    rows = db.query(Decision).filter(Decision.actual_cost.isnot(None)).all()
+    total = len(rows)
+    good = sum(1 for r in rows if r.actual_cost <= r.predicted_cost * 1.1)
+    return {"total_evaluated": total, "within_10pct_of_prediction": good,
+            "accuracy_rate": good / total if total else None}
