@@ -6,7 +6,7 @@ import PrescriptionCard from "./components/PrescriptionCard";
 import "./App.css";
 import AnimatedBackground from "./components/AnimatedBackground";
 import AnimatedNumber from "./components/AnimatedNumber";
-
+import RoiChart from "./components/RoiChart";
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
 async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
@@ -403,6 +403,12 @@ function App() {
           </ResponsiveContainer>
         </div>
       )}
+
+      <div style={{ marginTop: "2rem" }}>
+        <RoiChart />
+      </div>
+      {/* ADD THIS ↑ */}
+
 
       {recentDecisions.length > 0 && (
         <div style={{ marginTop: "2rem" }}>

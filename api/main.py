@@ -177,8 +177,18 @@ def decision_roi():
             "dollar_error": r.dollar_error,
         }
         for r in worst
-    ]
 
+    ] 
+    @app.get("/decisions")
+    def list_decisions():
+        db = SessionLocal()
+        rows = db.query(Decision).order_by(Decision.executed_at.desc()).all()
+        db.close()
+        return [{"shipment_id": r.shipment_id, "chosen_option": r.chosen_option,
+                    "predicted_cost": r.predicted_cost, "actual_cost": r.actual_cost,
+
+                "executed_at": r.executed_at} for r in rows
+        ]
     return {
         "total_evaluated": total,
         "within_10pct_of_prediction": good,
