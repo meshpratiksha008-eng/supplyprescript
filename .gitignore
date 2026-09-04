@@ -4,3 +4,4 @@ __pycache__/
 *.db
 **/node_modules/
 .env
+   ml/model_backup_*.pkl
