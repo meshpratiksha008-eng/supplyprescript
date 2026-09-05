@@ -7,7 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 
 from api.db import Base, engine, SessionLocal, Decision, ExecutionAttempt
-from api.auth import verify_password, create_token, get_current_user, require_operator, User, LoginAttempt
+from api.auth import (
+    verify_password, create_token, get_current_user,
+    require_operator, require_admin, User, LoginAttempt
+)
 from optimizer.solve import prescribe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -26,6 +29,7 @@ Base.metadata.create_all(engine)
 
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 10
+APPROVAL_THRESHOLD = 10000
 
 
 @app.get("/health")
@@ -42,7 +46,6 @@ def get_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20
         raise HTTPException(status_code=400, detail="budget_cap must be positive")
 
     options = prescribe(delay_days, budget_cap)
-
     if not options:
         raise HTTPException(status_code=422, detail="No feasible options within this budget")
 
@@ -68,7 +71,6 @@ def explain_prescription(shipment_id: int, delay_days: float, budget_cap: float 
         raise HTTPException(status_code=400, detail="budget_cap must be positive")
 
     options = prescribe(delay_days, budget_cap)
-
     if not options:
         raise HTTPException(status_code=422, detail="No feasible options within this budget")
 
@@ -91,7 +93,6 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
         raise HTTPException(status_code=429, detail=f"Account locked. Try again in {remaining} minute(s).")
 
     valid = user and verify_password(form.password, user.hashed_password)
-
     db.add(LoginAttempt(username=form.username, success=1 if valid else 0))
 
     if not valid:
@@ -109,7 +110,7 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
     prior_login = user.last_login
     user.last_login = datetime.utcnow()
     db.commit()
-    username = user.username  # capture before closing the session
+    username = user.username
     db.close()
 
     return {
@@ -121,7 +122,11 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/me")
 def me(current_user: str = Depends(get_current_user)):
-    return {"username": current_user}
+    db = SessionLocal()
+    user = db.query(User).filter(User.username == current_user).first()
+    role = user.role if user else None
+    db.close()
+    return {"username": current_user, "role": role}
 
 
 @app.post("/execute-decision")
@@ -140,27 +145,74 @@ def execute_decision(shipment_id: int, chosen_option: str, predicted_cost: float
         existing = db.query(Decision).filter(Decision.idempotency_key == idempotency_key).first()
         if existing:
             db.close()
-            return {"status": "already_executed", "decision_id": existing.id}
+            return {"status": existing.status, "decision_id": existing.id}
 
-    options = prescribe(predicted_delay_days, budget_cap)
-    valid_labels = {o["label"] for o in options}
-    if chosen_option not in valid_labels:
-        log_attempt(False, "invalid_option")
-        db.close()
-        raise HTTPException(status_code=400,
+        options = prescribe(predicted_delay_days, budget_cap)
+        valid_options = {o["option"] for o in options}         
+        if chosen_option not in valid_options:                
+           log_attempt(False, "invalid_option")
+           db.close()
+           raise HTTPException(status_code=400,
                              detail=f"'{chosen_option}' is not a valid option for this shipment at budget_cap={budget_cap}")
+
+    requires_approval = predicted_cost > APPROVAL_THRESHOLD
+    initial_status = "pending_approval" if requires_approval else "executed"
 
     d = Decision(shipment_id=shipment_id, chosen_option=chosen_option,
                  predicted_cost=predicted_cost, predicted_delay_days=predicted_delay_days,
-                 decided_by=current_user, idempotency_key=idempotency_key)
+                 decided_by=current_user, idempotency_key=idempotency_key,
+                 status=initial_status)
     db.add(d)
     db.commit()
     db.refresh(d)
 
-    log_attempt(True, "ok")
-    logger.info(f"Decision executed by {current_user}: shipment_id={shipment_id}, option={chosen_option}")
+    log_attempt(True, "pending_approval" if requires_approval else "ok")
+    logger.info(f"Decision {d.id} by {current_user}: shipment_id={shipment_id}, option={chosen_option}, status={initial_status}")
     db.close()
-    return {"status": "written", "decision_id": d.id}
+
+    return {
+        "status": initial_status,
+        "decision_id": d.id,
+        "requires_approval": requires_approval,
+        "approval_threshold": APPROVAL_THRESHOLD,
+    }
+
+
+@app.get("/decisions/pending-approval")
+def list_pending_approvals(current_user: str = Depends(require_admin)):
+    db = SessionLocal()
+    rows = db.query(Decision).filter(Decision.status == "pending_approval").order_by(Decision.executed_at.desc()).all()
+    db.close()
+    return [{
+        "id": r.id,
+        "shipment_id": r.shipment_id,
+        "chosen_option": r.chosen_option,
+        "predicted_cost": r.predicted_cost,
+        "decided_by": r.decided_by,
+        "executed_at": r.executed_at,
+    } for r in rows]
+
+
+@app.post("/decisions/{decision_id}/approve")
+def approve_decision(decision_id: int, approve: bool, current_user: str = Depends(require_admin)):
+    db = SessionLocal()
+    d = db.query(Decision).filter(Decision.id == decision_id).first()
+    if not d:
+        db.close()
+        raise HTTPException(status_code=404, detail="Decision not found")
+    if d.status != "pending_approval":
+        db.close()
+        raise HTTPException(status_code=400, detail=f"Decision is not pending approval (current status: {d.status})")
+
+    d.status = "approved" if approve else "rejected"
+    d.approved_by = current_user
+    d.approved_at = datetime.utcnow()
+    db.commit()
+    db.refresh(d)
+    db.close()
+
+    logger.info(f"Decision {decision_id} {d.status} by {current_user}")
+    return {"decision_id": d.id, "status": d.status, "approved_by": current_user}
 
 
 @app.get("/decisions")
@@ -176,6 +228,8 @@ def list_decisions(current_user: str = Depends(get_current_user)):
         "dollar_error": r.dollar_error,
         "flagged_outlier": r.flagged_outlier,
         "decided_by": r.decided_by,
+        "status": r.status,
+        "approved_by": r.approved_by,
         "executed_at": r.executed_at,
     } for r in rows]
 
@@ -202,15 +256,10 @@ def decision_roi():
             else "review_needed" if rate >= 0.4
             else "unreliable"
         )
-        breakdown[opt] = {
-            "total": v["total"],
-            "accuracy_rate": rate,
-            "recommendation": recommendation,
-        }
+        breakdown[opt] = {"total": v["total"], "accuracy_rate": rate, "recommendation": recommendation}
 
     total_dollar_error = sum(r.dollar_error for r in rows if r.dollar_error is not None)
     avg_dollar_error = total_dollar_error / total if total else None
-
     outliers = sum(1 for r in rows if r.flagged_outlier)
 
     weighted_total = sum(r.predicted_cost for r in rows)
@@ -219,14 +268,8 @@ def decision_roi():
 
     worst = sorted(rows, key=lambda r: abs(r.dollar_error or 0), reverse=True)[:5]
     worst_decisions = [
-        {
-            "id": r.id,
-            "shipment_id": r.shipment_id,
-            "chosen_option": r.chosen_option,
-            "predicted_cost": r.predicted_cost,
-            "actual_cost": r.actual_cost,
-            "dollar_error": r.dollar_error,
-        }
+        {"id": r.id, "shipment_id": r.shipment_id, "chosen_option": r.chosen_option,
+         "predicted_cost": r.predicted_cost, "actual_cost": r.actual_cost, "dollar_error": r.dollar_error}
         for r in worst
     ]
 

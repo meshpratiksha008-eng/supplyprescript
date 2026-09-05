@@ -4,7 +4,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import Column, Integer, String, DateTime
-from api.db import Base, engine, SessionLocal
+from api.db import Base, engine, SessionLocal, ExecutionAttempt
 
 SECRET_KEY = "dev-secret-change-this-before-any-real-deployment"
 ALGORITHM = "HS256"
@@ -61,4 +61,12 @@ def require_operator(current_user: str = Depends(get_current_user)):
         db.close()
         raise HTTPException(status_code=403, detail="Insufficient permissions to execute decisions")
     db.close()
+    return current_user
+
+def require_admin(current_user: str = Depends(get_current_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.username == current_user).first()
+    db.close()
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin approval required")
     return current_user

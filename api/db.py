@@ -22,6 +22,9 @@ class Decision(Base):
     flagged_outlier = Column(Boolean, nullable=True)
     decided_by = Column(String, nullable=True)
     idempotency_key = Column(String, nullable=True, unique=True)
+    status = Column(String, default="executed")
+    approved_by = Column(String, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
 
 class ExecutionAttempt(Base):
     __tablename__ = "execution_attempts"
