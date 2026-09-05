@@ -1,13 +1,14 @@
 import logging
+from datetime import datetime, timedelta
+from collections import defaultdict
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from api.db import Base, engine, SessionLocal, Decision
-from optimizer.solve import prescribe
 from fastapi.security import OAuth2PasswordRequestForm
-from api.auth import verify_password, create_token, get_current_user, User
-from api.db import SessionLocal
-from datetime import datetime, timedelta
-from api.auth import LoginAttempt
+
+from api.db import Base, engine, SessionLocal, Decision, ExecutionAttempt
+from api.auth import verify_password, create_token, get_current_user, require_operator, User, LoginAttempt
+from optimizer.solve import prescribe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("supplyprescript")
@@ -23,9 +24,14 @@ app.add_middleware(
 
 Base.metadata.create_all(engine)
 
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_MINUTES = 10
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/prescribe/{shipment_id}")
 def get_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20000):
@@ -52,8 +58,27 @@ def get_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20
         "options": rounded_options,
         "best_option": options[0]["option"]
     }
-MAX_FAILED_ATTEMPTS = 5
-LOCKOUT_MINUTES = 10
+
+
+@app.get("/prescribe/{shipment_id}/explain")
+def explain_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20000):
+    if delay_days < 0:
+        raise HTTPException(status_code=400, detail="delay_days cannot be negative")
+    if budget_cap <= 0:
+        raise HTTPException(status_code=400, detail="budget_cap must be positive")
+
+    options = prescribe(delay_days, budget_cap)
+
+    if not options:
+        raise HTTPException(status_code=422, detail="No feasible options within this budget")
+
+    top = options[0]
+    return {
+        "shipment_id": shipment_id,
+        "recommended": top["label"],
+        "reason": f"Lowest cost per day saved (${top['cost_per_day_saved']:.2f}/day) among {len(options)} options"
+    }
+
 
 @app.post("/login")
 def login(form: OAuth2PasswordRequestForm = Depends()):
@@ -79,7 +104,7 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
         db.close()
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
-        user.failed_attempts = 0
+    user.failed_attempts = 0
     user.locked_until = None
     prior_login = user.last_login
     user.last_login = datetime.utcnow()
@@ -92,43 +117,71 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
         "token_type": "bearer",
         "last_login": prior_login.isoformat() if prior_login else None,
     }
-    
+
 
 @app.get("/me")
 def me(current_user: str = Depends(get_current_user)):
     return {"username": current_user}
 
-@app.get("/prescribe/{shipment_id}/explain")
-def explain_prescription(shipment_id: int, delay_days: float, budget_cap: float = 20000):
-    if delay_days < 0:
-        raise HTTPException(status_code=400, detail="delay_days cannot be negative")
-    if budget_cap <= 0:
-        raise HTTPException(status_code=400, detail="budget_cap must be positive")
-
-    options = prescribe(delay_days, budget_cap)
-
-    if not options:
-        raise HTTPException(status_code=422, detail="No feasible options within this budget")
-
-    top = options[0]
-    return {
-        "shipment_id": shipment_id,
-        "recommended": top["label"],
-        "reason": f"Lowest cost per day saved (${top['cost_per_day_saved']:.2f}/day) among {len(options)} options"
-    }
 
 @app.post("/execute-decision")
-def execute_decision(shipment_id: int, chosen_option: str, predicted_cost: float, predicted_delay_days: float):
+def execute_decision(shipment_id: int, chosen_option: str, predicted_cost: float,
+                      predicted_delay_days: float, budget_cap: float,
+                      idempotency_key: str = None,
+                      current_user: str = Depends(require_operator)):
     db = SessionLocal()
+
+    def log_attempt(success: bool, reason: str):
+        db.add(ExecutionAttempt(username=current_user, shipment_id=shipment_id,
+                                 success=1 if success else 0, reason=reason))
+        db.commit()
+
+    if idempotency_key:
+        existing = db.query(Decision).filter(Decision.idempotency_key == idempotency_key).first()
+        if existing:
+            db.close()
+            return {"status": "already_executed", "decision_id": existing.id}
+
+    options = prescribe(predicted_delay_days, budget_cap)
+    valid_labels = {o["label"] for o in options}
+    if chosen_option not in valid_labels:
+        log_attempt(False, "invalid_option")
+        db.close()
+        raise HTTPException(status_code=400,
+                             detail=f"'{chosen_option}' is not a valid option for this shipment at budget_cap={budget_cap}")
+
     d = Decision(shipment_id=shipment_id, chosen_option=chosen_option,
-                 predicted_cost=predicted_cost, predicted_delay_days=predicted_delay_days)
-    db.add(d); db.commit(); db.refresh(d)
+                 predicted_cost=predicted_cost, predicted_delay_days=predicted_delay_days,
+                 decided_by=current_user, idempotency_key=idempotency_key)
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+
+    log_attempt(True, "ok")
+    logger.info(f"Decision executed by {current_user}: shipment_id={shipment_id}, option={chosen_option}")
     db.close()
     return {"status": "written", "decision_id": d.id}
+
+
+@app.get("/decisions")
+def list_decisions(current_user: str = Depends(get_current_user)):
+    db = SessionLocal()
+    rows = db.query(Decision).order_by(Decision.executed_at.desc()).all()
+    db.close()
+    return [{
+        "shipment_id": r.shipment_id,
+        "chosen_option": r.chosen_option,
+        "predicted_cost": r.predicted_cost,
+        "actual_cost": r.actual_cost,
+        "dollar_error": r.dollar_error,
+        "flagged_outlier": r.flagged_outlier,
+        "decided_by": r.decided_by,
+        "executed_at": r.executed_at,
+    } for r in rows]
+
+
 @app.get("/decision-roi")
 def decision_roi():
-    from collections import defaultdict
-
     db = SessionLocal()
     rows = db.query(Decision).filter(Decision.actual_cost.isnot(None)).all()
     total = len(rows)
@@ -160,12 +213,10 @@ def decision_roi():
 
     outliers = sum(1 for r in rows if r.flagged_outlier)
 
-    # Cost-weighted accuracy: bigger decisions count more
     weighted_total = sum(r.predicted_cost for r in rows)
     weighted_good = sum(r.predicted_cost for r in rows if r.actual_cost <= r.predicted_cost * 1.1)
     cost_weighted_accuracy = weighted_good / weighted_total if weighted_total else None
 
-    # Worst 5 decisions by absolute dollar error
     worst = sorted(rows, key=lambda r: abs(r.dollar_error or 0), reverse=True)[:5]
     worst_decisions = [
         {
@@ -177,18 +228,10 @@ def decision_roi():
             "dollar_error": r.dollar_error,
         }
         for r in worst
+    ]
 
-    ] 
-    @app.get("/decisions")
-    def list_decisions():
-        db = SessionLocal()
-        rows = db.query(Decision).order_by(Decision.executed_at.desc()).all()
-        db.close()
-        return [{"shipment_id": r.shipment_id, "chosen_option": r.chosen_option,
-                    "predicted_cost": r.predicted_cost, "actual_cost": r.actual_cost,
+    db.close()
 
-                "executed_at": r.executed_at} for r in rows
-        ]
     return {
         "total_evaluated": total,
         "within_10pct_of_prediction": good,
